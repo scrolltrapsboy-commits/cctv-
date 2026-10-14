@@ -6,7 +6,7 @@ import './styles.css';
 const API = 'http://127.0.0.1:8765';
 
 function App() {
-  const [health, setHealth] = useState({ ok: false, camera_configured: false, ollama_available: false, model: 'qwen3-vl:4b' });
+  const [health, setHealth] = useState({ ok: false, camera_configured: false, groq_configured: false, provider: 'Groq API', model: 'qwen/qwen3.6-27b' });
   const [camName, setCamName] = useState('CP Plus camera');
   const [rtsp, setRtsp] = useState('');
   const [showUrl, setShowUrl] = useState(false);
@@ -67,9 +67,9 @@ function App() {
     try {
       const r = await fetch(`${API}/api/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: text }), signal: AbortSignal.timeout(130000) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Unable to get answer');
-      setMessages(m => [...m, { role: 'assistant', text: d.answer, time: new Date(), source: 'Local vision model' }]);
+      setMessages(m => [...m, { role: 'assistant', text: d.answer, time: new Date(), source: 'Groq vision API' }]);
       if (d.snapshot_mime_type && !snapshot) takeSnapshot(); speak(d.answer);
-    } catch (e) { setMessages(m => [...m, { role: 'error', text: `I couldn't answer that: ${e.message}. Check that the local connector, camera stream, and Ollama vision model are running.`, time: new Date() }]); }
+    } catch (e) { setMessages(m => [...m, { role: 'error', text: `I couldn't answer that: ${e.message}. Check the local connector, camera stream, Groq API key, and available model quota.`, time: new Date() }]); }
     finally { setBusy(false); }
   }
   function toggleMic() {
@@ -95,7 +95,7 @@ function App() {
       <button className="nav-item active"><Activity size={17}/> <span>Vision console</span><span className="nav-dot"/></button>
       <button className="nav-item" onClick={() => setShowSetup(true)}><Camera size={17}/> <span>Camera sources</span><Plus size={15} className="nav-trailing"/></button>
       <button className="nav-item" onClick={() => notify('Event history is planned for the next build.')}><Radio size={17}/> <span>Event timeline</span><span className="soon">SOON</span></button>
-      <div className="sidebar-bottom"><div className="local-card"><div className="local-icon"><ShieldCheck size={19}/></div><strong>Private by design</strong><p>Vision questions are processed by your local model. Camera credentials stay inside the connector process.</p><div className="local-status"><i/> LOCAL PROCESSING</div></div><button className="nav-item" onClick={() => setShowSetup(true)}><Settings2 size={17}/> <span>Connection settings</span></button><div className="profile"><div className="avatar">NV</div><div><strong>Local workspace</strong><small>Personal instance</small></div><span className="online-dot"/></div></div>
+      <div className="sidebar-bottom"><div className="local-card"><div className="local-icon"><ShieldCheck size={19}/></div><strong>Private by design</strong><p>Camera credentials stay inside this local connector. When you ask a question, a camera snapshot is sent to Groq for vision analysis.</p><div className="local-status"><i/> LOCAL PROCESSING</div></div><button className="nav-item" onClick={() => setShowSetup(true)}><Settings2 size={17}/> <span>Connection settings</span></button><div className="profile"><div className="avatar">NV</div><div><strong>Local workspace</strong><small>Personal instance</small></div><span className="online-dot"/></div></div>
     </aside>
 
     <main className="main-panel">
@@ -104,8 +104,8 @@ function App() {
         <div className="page-heading"><div><div className="eyebrow"><Sparkles size={13}/> YOUR CAMERA, CONVERSATIONAL</div><h1>See beyond the <span>frame.</span></h1><p>Ask your camera a question. Get answers grounded in what it can actually see.</p></div><button className="secondary-btn" onClick={() => setShowSetup(true)}><Plus size={16}/> Add camera</button></div>
         <div className="metric-row">
           <div className="metric"><span className="metric-icon cyan"><Camera size={17}/></span><div><small>CAMERA SOURCE</small><strong>{health.camera_configured ? camName : 'No camera added'}</strong><em>{health.camera_configured ? 'Configured' : 'Ready to connect'}</em></div></div>
-          <div className="metric"><span className="metric-icon purple"><Zap size={17}/></span><div><small>VISION ENGINE</small><strong>{health.ollama_available ? health.model : 'Local model offline'}</strong><em>{health.ollama_available ? 'AI runtime detected' : 'Start Ollama locally'}</em></div></div>
-          <div className="metric"><span className="metric-icon green"><ShieldCheck size={17}/></span><div><small>DATA ROUTING</small><strong>Local-first</strong><em>No paid AI API configured</em></div></div>
+          <div className="metric"><span className="metric-icon purple"><Zap size={17}/></span><div><small>VISION ENGINE</small><strong>{health.groq_configured ? health.model : 'Groq key not configured'}</strong><em>{health.groq_configured ? 'Vision API configured' : 'Add your Groq API key'}</em></div></div>
+          <div className="metric"><span className="metric-icon green"><ShieldCheck size={17}/></span><div><small>DATA ROUTING</small><strong>Connector protected</strong><em>Groq vision API · usage limits apply</em></div></div>
         </div>
         <div className="dashboard-grid">
           <section className="panel camera-panel"><div className="panel-header"><div><div className="panel-title"><span className="live-symbol"/> LIVE CAMERA</div><div className="panel-subtitle">{health.camera_configured ? camName : 'Connect your CP Plus device'}</div></div><button className="small-icon-btn" title="Camera settings" onClick={() => setShowSetup(true)}><Settings2 size={17}/></button></div>
@@ -115,7 +115,7 @@ function App() {
               <div className="viewport-coordinates">NEXUS VISION <span>•</span> LOCAL FEED</div>
             </div>
             <div className="camera-footer"><div className="camera-connection"><span className={`status-led ${health.camera_configured ? 'on' : ''}`}/><div><strong>{cameraStatus}</strong><small>{health.camera_configured ? 'RTSP source configured' : 'Awaiting camera configuration'}</small></div></div><div className="camera-actions"><button className="round-action" title="Refresh snapshot" onClick={takeSnapshot}><Activity size={16}/></button><button className="round-action" title="Disconnect camera" onClick={disconnect}><X size={16}/></button></div></div>
-            <div className="camera-hint"><ShieldCheck size={15}/><span>For privacy, your stream is accessed by the local connector. The dashboard shows snapshots on demand.</span></div>
+            <div className="camera-hint"><ShieldCheck size={15}/><span>For privacy, your stream is accessed by the local connector. The dashboard shows snapshots on demand. Asking a question sends the current snapshot to Groq for analysis.</span></div>
           </section>
 
           <section className="panel chat-panel"><div className="panel-header chat-heading"><div className="assistant-heading"><div className="assistant-avatar"><ScanEye size={20}/><span/></div><div><div className="panel-title">Talk to your camera</div><div className="panel-subtitle">Ask naturally. Get a visual answer.</div></div></div><button className={`small-icon-btn ${speaking ? 'selected' : ''}`} title={speaking ? 'Mute spoken answers' : 'Enable spoken answers'} onClick={() => { setSpeaking(!speaking); if (speaking) window.speechSynthesis?.cancel(); }} aria-label="Toggle spoken answers">{speaking ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button></div>
@@ -128,7 +128,7 @@ function App() {
             </div>
             <div className="suggestion-area"><div className="suggestions-label">TRY ASKING</div><div className="suggestions"><button onClick={() => ask('Describe what is visible in the current camera frame.')}> <Eye size={13}/> Describe the scene</button><button onClick={() => ask('Read any visible text or signs in the image.')}> <ScanEye size={13}/> Read visible text</button><button onClick={() => ask('How many people are visible? Explain any uncertainty.')}> <Activity size={13}/> Count people</button></div></div>
             <form className="composer" onSubmit={e => { e.preventDefault(); ask(); }}><button type="button" className={`mic-btn ${listening ? 'listening' : ''}`} title="Speak a question" onClick={toggleMic}>{listening ? <MicOff size={18}/> : <Mic size={18}/>}</button><input ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask anything about what the camera sees…" disabled={busy}/><button type="submit" className="send-btn" disabled={busy || !question.trim()} aria-label="Send question"><Send size={17}/></button></form>
-            <div className="composer-note"><span><ShieldCheck size={12}/> Private local analysis</span><span>AI can make mistakes · Verify important events</span></div>
+            <div className="composer-note"><span><ShieldCheck size={12}/> Snapshot sent to Groq for analysis</span><span>AI can make mistakes · Verify important events</span></div>
           </section>
         </div>
         <footer className="page-footer"><span>© 2026 NEXUS VISION <i/> LOCAL CAMERA INTELLIGENCE</span><span><span className="footer-led"/> {health.ok ? 'LOCAL CONNECTOR REACHABLE' : 'CONNECTOR NOT REACHABLE'}</span></footer>
