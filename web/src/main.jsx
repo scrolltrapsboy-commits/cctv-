@@ -14,7 +14,7 @@ function App() {
   const [showSetup, setShowSetup] = useState(false);
   const [busy, setBusy] = useState(false);
   const [question, setQuestion] = useState('');
-  const [messages, setMessages] = useState([{ role: 'assistant', text: 'Hello. I’m NEXUS Vision. Connect your camera and I’ll help you understand what is visible in its current frame.', time: new Date() }]);
+  const [messages, setMessages] = useState([{ role: 'assistant', text: 'Hi, I’m James. Ask me a general question anytime. When a camera stream is connected to the cloud, I can also answer questions about what it sees.', time: new Date() }]);
   const [snapshot, setSnapshot] = useState('');
   const [cameraStatus, setCameraStatus] = useState('Not connected');
   const [toast, setToast] = useState('');
@@ -76,7 +76,7 @@ function App() {
       const r = await fetch(`${API}/api/ask`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: text }), signal: AbortSignal.timeout(130000) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Unable to get answer');
       setMessages(m => [...m, { role: 'assistant', text: d.answer, time: new Date(), source: 'Groq vision API' }]);
-      if (d.snapshot_mime_type && !snapshot) takeSnapshot(); speak(d.answer);
+      if (d.camera_used && d.snapshot_mime_type && !snapshot) takeSnapshot(); speak(d.answer);
     } catch (e) { setMessages(m => [...m, { role: 'error', text: `I couldn't answer that: ${e.message}. Check Render logs, stream reachability, Groq API key, and model quota.`, time: new Date() }]); }
     finally { setBusy(false); }
   }
@@ -131,7 +131,7 @@ function App() {
           } else {
             awaitingCommandRef.current = true;
             setWakeStatus('I’m listening — ask your question');
-            speak('Hi! I’m listening. What would you like to know?');
+            speak('What can I do for you?');
           }
         }
       };
@@ -183,7 +183,7 @@ function App() {
             <div className="camera-hint"><ShieldCheck size={15}/><span>Render processes camera requests in the cloud. A private address such as 192.168.x.x is not reachable from Render; this requires a cloud-reachable camera stream or a secure relay. Snapshots are sent to Groq for analysis.</span></div>
           </section>
 
-          <section className="panel chat-panel"><div className="panel-header chat-heading"><div className="assistant-heading"><div className="assistant-avatar"><ScanEye size={20}/><span/></div><div><div className="panel-title">Talk to your camera</div><div className="panel-subtitle">Ask naturally. Get a visual answer.</div></div></div><button className={`small-icon-btn ${wakeEnabled ? 'selected' : ''}`} title={wakeEnabled ? 'Turn off Hey James listening' : 'Enable Hey James wake word'} onClick={startWakeWord} aria-label="Toggle Hey James wake word"><Mic size={17}/></button><button className={`small-icon-btn ${speaking ? 'selected' : ''}`} title={speaking ? 'Mute spoken answers' : 'Enable spoken answers'} onClick={() => { setSpeaking(!speaking); if (speaking) window.speechSynthesis?.cancel(); }} aria-label="Toggle spoken answers">{speaking ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button></div>
+          <section className="panel chat-panel"><div className="panel-header chat-heading"><div className="assistant-heading"><div className="assistant-avatar"><ScanEye size={20}/><span/></div><div><div className="panel-title">Talk to James</div><div className="panel-subtitle">General questions work now; camera answers need a cloud-reachable stream.</div></div></div><button className={`small-icon-btn ${wakeEnabled ? 'selected' : ''}`} title={wakeEnabled ? 'Turn off Hey James listening' : 'Enable Hey James wake word'} onClick={startWakeWord} aria-label="Toggle Hey James wake word"><Mic size={17}/></button><button className={`small-icon-btn ${speaking ? 'selected' : ''}`} title={speaking ? 'Mute spoken answers' : 'Enable spoken answers'} onClick={() => { setSpeaking(!speaking); if (speaking) window.speechSynthesis?.cancel(); }} aria-label="Toggle spoken answers">{speaking ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button></div>
             <div className="chat-context"><span className="context-pulse"/><span>{wakeStatus}</span><span className="context-separator">/</span><span>{health.camera_configured ? `Context: ${camName}` : 'No camera context yet'}</span><span className="context-separator">/</span><span>Frame-based analysis</span></div>
             <div className="messages">
               <div className="date-divider"><span/> SESSION STARTED <span/></div>
@@ -191,8 +191,8 @@ function App() {
               {busy && <div className="message-row assistant"><div className="message-avatar assistant"><ScanEye size={16}/></div><div className="message-main"><div className="message-meta"><strong>NEXUS</strong><time>Thinking…</time></div><div className="bubble thinking"><span/><span/><span/><em>Examining current camera frame</em></div></div></div>}
               <div ref={chatEndRef}/>
             </div>
-            <div className="suggestion-area"><div className="suggestions-label">TRY ASKING</div><div className="suggestions"><button onClick={() => ask('Describe what is visible in the current camera frame.')}> <Eye size={13}/> Describe the scene</button><button onClick={() => ask('Read any visible text or signs in the image.')}> <ScanEye size={13}/> Read visible text</button><button onClick={() => ask('How many people are visible? Explain any uncertainty.')}> <Activity size={13}/> Count people</button></div></div>
-            <form className="composer" onSubmit={e => { e.preventDefault(); ask(); }}><button type="button" className={`mic-btn ${listening ? 'listening' : ''}`} title="Speak a question" onClick={toggleMic}>{listening ? <MicOff size={18}/> : <Mic size={18}/>}</button><input ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask anything about what the camera sees…" disabled={busy}/><button type="submit" className="send-btn" disabled={busy || !question.trim()} aria-label="Send question"><Send size={17}/></button></form>
+            <div className="suggestion-area"><div className="suggestions-label">TRY ASKING</div><div className="suggestions"><button onClick={() => ask('Describe what is visible in the current camera frame.')}> <Eye size={13}/> Describe the scene</button><button onClick={() => ask('Read any visible text or signs in the image.')}> <ScanEye size={13}/> Read visible text</button><button onClick={() => ask('Explain how artificial intelligence works in simple words.')}> <Activity size={13}/> Ask general knowledge</button></div></div>
+            <form className="composer" onSubmit={e => { e.preventDefault(); ask(); }}><button type="button" className={`mic-btn ${listening ? 'listening' : ''}`} title="Speak a question" onClick={toggleMic}>{listening ? <MicOff size={18}/> : <Mic size={18}/>}</button><input ref={inputRef} value={question} onChange={e => setQuestion(e.target.value)} placeholder="Ask James a question…" disabled={busy}/><button type="submit" className="send-btn" disabled={busy || !question.trim()} aria-label="Send question"><Send size={17}/></button></form>
             <div className="composer-note"><span><ShieldCheck size={12}/> Snapshot sent to Groq for analysis</span><span>AI can make mistakes · Verify important events</span></div>
           </section>
         </div>
