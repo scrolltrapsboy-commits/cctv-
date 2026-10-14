@@ -20,7 +20,7 @@ load_dotenv()
 APP_NAME = "NEXUS Vision Camera Assistant"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
-GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b").strip()
+GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.8-27b").strip()
 
 app = FastAPI(title=APP_NAME, version="0.2.1")
 # Set FRONTEND_ORIGINS to comma-separated deployed website origins in Render.
@@ -207,7 +207,7 @@ def ask_camera(data: AskInput):
         if response.status_code == 429:
             raise HTTPException(status_code=429, detail="Groq rate limit or usage quota reached. Wait and try again, or check your Groq Console limits.")
         if response.status_code in (400, 404):
-            raise HTTPException(status_code=502, detail=f"Groq rejected model/request. Verify GROQ_VISION_MODEL ('{GROQ_VISION_MODEL}') is currently available for vision in your Groq account.")
+            raise HTTPException(status_code=502, detail=f"Groq rejected the model/request (HTTP {response.status_code}). Current model: {GROQ_VISION_MODEL}. Groq response: {response.text[:700]}. Check model ID and account access in Groq Console.")
         response.raise_for_status()
         payload_out = response.json()
         choices = payload_out.get("choices") or []
