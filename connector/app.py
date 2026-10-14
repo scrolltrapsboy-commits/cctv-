@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import ipaddress
 import os
 import threading
 from pathlib import Path
@@ -59,9 +60,28 @@ def _validate_rtsp(url: str) -> None:
 def _capture_snapshot(url: str) -> bytes:
     """Capture one RTSP frame with bounded open/read waits.
 
-    Run this connector on a computer that can route to the camera (normally
-    the same home LAN). Explicit FFmpeg timeouts prevent indefinite blocking.
+    In Render-only production, the camera address must be reachable from the
+    cloud service. Private LAN addresses cannot be routed to from Render.
+    Explicit FFmpeg timeouts prevent indefinite blocking.
     """
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if os.environ.get("RENDER_SERVICE_ID") and host:
+        try:
+            address = ipaddress.ip_address(host)
+        except ValueError:
+            address = None
+        if address is not None and address.is_private:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Render cannot connect directly to a private camera IP such as "
+                    "192.168.x.x. The website and API are running in the cloud, but "
+                    "the camera is only reachable on your home Wi-Fi. A secure, "
+                    "authenticated cloud relay or VPN gateway is required; do not "
+                    "port-forward or expose the RTSP camera directly to the internet."
+                ),
+            )
     previous_options = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
     os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;7000000"
     cap = None
