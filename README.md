@@ -34,7 +34,7 @@ Set these environment variables in that same Render service:
 - `GROQ_BASE_URL` = `https://api.groq.com/openai/v1`
 - `GROQ_VISION_MODEL` = `qwen/qwen3.6-27b`
 
-The backend serves the built website from `web/dist`; in production the website automatically calls the same Render origin for API requests. The service root `/` opens the website, while `/api/health` and `/docs` remain API endpoints. After changing settings, redeploy the service from the latest `main` branch.
+The backend serves the built website from `web/dist`. The public Render site is the UI host; the browser calls the local connector at `http://127.0.0.1:8765` for camera RTSP and snapshot requests. Render cannot directly reach a private home-LAN address such as `192.168.31.26`. The service root `/` opens the website, while `/api/health` and `/docs` remain API endpoints. After changing settings, redeploy the service from the latest `main` branch.
 
 **Camera network boundary:** a Render service cannot ordinarily reach a camera available only on private home Wi-Fi. Do not expose RTSP ports or camera credentials to the public internet. Camera access needs a compatible reachable stream or a secure local connector/private tunnel. Wake-word support uses browser speech recognition and needs the website tab open; this deployment does not by itself add continuous event detection or camera-speaker output.
 
@@ -102,7 +102,8 @@ If PowerShell blocks activation, use `.venv\Scripts\python.exe -m pip install -r
 - **429:** rate limit or account quota reached; check Groq Console.
 - **Model/request rejected:** verify `GROQ_VISION_MODEL` is an active vision model available to your account.
 - **Camera snapshot failed:** check the exact RTSP path, credentials, network, and stream settings in VLC.
-- **Connector offline:** ensure the FastAPI process is running on port 8765.
+- **Signal timed out:** open the Render site on the Windows PC connected to the camera's Wi-Fi and start the local FastAPI connector on `127.0.0.1:8765`. Render cannot route directly to a private camera IP. If the connector is online but the stream still times out, verify the current camera IP, use the exact ONVIF media-profile RTSP URI, and try a lower-resolution H.264 profile.
+- **Connector offline:** ensure the FastAPI process is running on port 8765 and the browser allows the page to contact localhost.
 
 ## Security
 
