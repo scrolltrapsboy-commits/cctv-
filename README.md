@@ -14,7 +14,7 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 
 - **This uses Groq's cloud API, not a local AI model.** A camera snapshot is sent to Groq whenever you ask a question. Do not use it with cameras or locations whose footage you are not authorized to share.
 - Groq usage limits, model availability, and any free tier can change. Check your Groq Console before relying on it for continuous use.
-- The default vision model is `qwen/qwen3.6-27b`; verify the model is currently available to your Groq account. Change `GROQ_VISION_MODEL` in `connector/.env` if needed.
+- The default vision model is `qwen/qwen3.8-27b`; verify the model is currently available to your Groq account. Change `GROQ_VISION_MODEL` in `connector/.env` if needed.
 - CP Plus models and firmware differ. This works only if your camera/NVR exposes a compatible RTSP stream. Some setups may need RTSP/ONVIF enabled in the device configuration.
 - Most browsers cannot play RTSP directly. MediaMTX can bridge compatible streams to WebRTC/HLS for a continuous browser live view. The current dashboard captures snapshots through the connector for AI questions.
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
@@ -32,7 +32,7 @@ Set these environment variables in that same Render service:
 
 - `GROQ_API_KEY` = your secret Groq key
 - `GROQ_BASE_URL` = `https://api.groq.com/openai/v1`
-- `GROQ_VISION_MODEL` = `qwen/qwen3.6-27b`
+- `GROQ_VISION_MODEL` = `qwen/qwen3.8-27b`
 
 The backend serves the built website from `web/dist`. The public Render site is the UI host; after the user clicks **Add camera**, the browser calls the local connector at `http://127.0.0.1:8765` for camera RTSP and snapshot requests. Chrome/Edge may ask permission for loopback/local-network access; allow it. Render cannot directly reach a private home-LAN address such as `192.168.31.26`. The service root `/` opens the website, while `/api/health` and `/docs` remain API endpoints. After merging and redeploying, keep the local connector running on the Windows PC connected to the camera Wi-Fi.
 
