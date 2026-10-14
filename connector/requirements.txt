@@ -4,3 +4,4 @@ pydantic>=2.8,<3.0
 requests>=2.32,<3.0
 opencv-python-headless>=4.10,<5.0
 python-multipart>=0.0.9
+python-dotenv>=1.0,<2.0
