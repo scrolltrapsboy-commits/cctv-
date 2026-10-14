@@ -38,7 +38,8 @@ function App() {
       setCameraStatus(data.camera_configured ? 'Configured' : 'Not connected');
     } catch { setHealth(h => ({ ...h, ok: false })); }
   }
-  // Do not probe localhost on page load: Chrome/Edge may require the user to grant loopback access first. Probe after an explicit user action instead.
+  // Production health checks use the same-origin Render API; no local connector permission is needed.
+  useEffect(() => { refreshHealth(); }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
   useEffect(() => () => { wakeEnabledRef.current = false; try { recognitionRef.current?.stop(); wakeRecognitionRef.current?.stop(); window.speechSynthesis?.cancel(); } catch {} }, []);
 
