@@ -158,7 +158,7 @@ def ask_camera(data: AskInput):
             }
         ],
         "temperature": 0.2,
-        "max_tokens": 700,
+        "max_completion_tokens": 900,
         "stream": False,
     }
     try:
