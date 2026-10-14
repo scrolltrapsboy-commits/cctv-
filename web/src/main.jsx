@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Activity, AudioLines, Camera, Check, ChevronDown, CircleHelp, Eye, EyeOff, Gauge, Menu, MessageSquare, Mic, MicOff, Monitor, Plus, Radio, ScanEye, Send, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, Wifi, X, Zap } from 'lucide-react';
 import './styles.css';
 
-const API = 'http://127.0.0.1:8765';
+const API = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8765').replace(/\/$/, '');
 
 function App() {
   const [health, setHealth] = useState({ ok: false, camera_configured: false, groq_configured: false, provider: 'Groq API', model: 'qwen/qwen3.6-27b' });
@@ -19,6 +19,11 @@ function App() {
   const [toast, setToast] = useState('');
   const [speaking, setSpeaking] = useState(true);
   const [listening, setListening] = useState(false);
+  const [wakeEnabled, setWakeEnabled] = useState(false);
+  const [wakeStatus, setWakeStatus] = useState('Wake word off');
+  const wakeEnabledRef = useRef(false);
+  const awaitingCommandRef = useRef(false);
+  const wakeRecognitionRef = useRef(null);
   const inputRef = useRef(null);
   const recognitionRef = useRef(null);
   const chatEndRef = useRef(null);
@@ -34,7 +39,7 @@ function App() {
   }
   useEffect(() => { refreshHealth(); const id = setInterval(refreshHealth, 8000); return () => clearInterval(id); }, []);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, busy]);
-  useEffect(() => () => { try { recognitionRef.current?.stop(); window.speechSynthesis?.cancel(); } catch {} }, []);
+  useEffect(() => () => { wakeEnabledRef.current = false; try { recognitionRef.current?.stop(); wakeRecognitionRef.current?.stop(); window.speechSynthesis?.cancel(); } catch {} }, []);
 
   function notify(text) { setToast(text); window.setTimeout(() => setToast(''), 3600); }
   function speak(text) {
@@ -74,13 +79,70 @@ function App() {
   }
   function toggleMic() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return notify('Speech recognition is not supported by this browser. You can type questions, or configure offline speech recognition later.');
+    if (!SpeechRecognition) return notify('Voice recognition requires a supported browser such as Chrome or Edge.');
     if (listening) { recognitionRef.current?.stop(); setListening(false); return; }
-    const recognition = new SpeechRecognition(); recognition.lang = 'en-IN'; recognition.interimResults = false; recognition.maxAlternatives = 1;
-    recognition.onresult = e => { const heard = e.results?.[0]?.[0]?.transcript || ''; setQuestion(heard); setListening(false); setTimeout(() => ask(heard), 250); };
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-IN'; recognition.interimResults = false; recognition.maxAlternatives = 1;
+    recognition.onresult = e => { const heard = e.results?.[0]?.[0]?.transcript || ''; setQuestion(heard); setListening(false); if (heard.trim()) ask(heard); };
     recognition.onerror = () => { setListening(false); notify('Microphone recognition failed. Check browser microphone permission.'); };
     recognition.onend = () => setListening(false); recognitionRef.current = recognition;
     try { recognition.start(); setListening(true); } catch { setListening(false); notify('Could not start microphone.'); }
+  }
+
+  function stopWakeWord() {
+    wakeEnabledRef.current = false; awaitingCommandRef.current = false;
+    setWakeEnabled(false); setWakeStatus('Wake word off');
+    try { wakeRecognitionRef.current?.stop(); } catch {}
+    wakeRecognitionRef.current = null;
+  }
+
+  function startWakeWord() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return notify('Hey James wake listening requires Chrome or Edge, microphone permission, and this page kept open.');
+    if (wakeEnabledRef.current) { stopWakeWord(); return; }
+    wakeEnabledRef.current = true; awaitingCommandRef.current = false;
+    setWakeEnabled(true); setWakeStatus('Listening for Hey James / Hi James');
+    const listen = () => {
+      if (!wakeEnabledRef.current) return;
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'en-IN'; recognition.continuous = true; recognition.interimResults = false; recognition.maxAlternatives = 1;
+      wakeRecognitionRef.current = recognition;
+      recognition.onresult = event => {
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          if (!event.results[i].isFinal) continue;
+          const transcript = (event.results[i][0]?.transcript || '').trim();
+          if (!transcript) continue;
+          const normalized = transcript.toLowerCase().replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim();
+          if (awaitingCommandRef.current) {
+            awaitingCommandRef.current = false;
+            setWakeStatus('Processing your question…');
+            ask(transcript);
+            continue;
+          }
+          const match = normalized.match(/\b(?:hey|hi)\s+james\b/);
+          if (!match) continue;
+          const command = normalized.slice(match.index + match[0].length).trim();
+          if (command) {
+            setWakeStatus('Processing your question…');
+            ask(command);
+          } else {
+            awaitingCommandRef.current = true;
+            setWakeStatus('I’m listening — ask your question');
+            speak('Hi! I’m listening. What would you like to know?');
+          }
+        }
+      };
+      recognition.onerror = event => {
+        if (!wakeEnabledRef.current) return;
+        if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+          stopWakeWord();
+          notify('Microphone permission denied. Allow microphone access in browser settings.');
+        } else if (event.error !== 'no-speech' && event.error !== 'aborted') setWakeStatus('Voice listener reconnecting…');
+      };
+      recognition.onend = () => { if (wakeEnabledRef.current) window.setTimeout(listen, 400); };
+      try { recognition.start(); } catch { if (wakeEnabledRef.current) window.setTimeout(listen, 800); }
+    };
+    listen();
   }
   async function disconnect() {
     try { await fetch(`${API}/api/camera`, { method: 'DELETE' }); setSnapshot(''); setCameraStatus('Not connected'); setHealth(h => ({ ...h, camera_configured: false })); notify('Camera configuration cleared from connector memory.'); }
@@ -118,8 +180,8 @@ function App() {
             <div className="camera-hint"><ShieldCheck size={15}/><span>For privacy, your stream is accessed by the local connector. The dashboard shows snapshots on demand. Asking a question sends the current snapshot to Groq for analysis.</span></div>
           </section>
 
-          <section className="panel chat-panel"><div className="panel-header chat-heading"><div className="assistant-heading"><div className="assistant-avatar"><ScanEye size={20}/><span/></div><div><div className="panel-title">Talk to your camera</div><div className="panel-subtitle">Ask naturally. Get a visual answer.</div></div></div><button className={`small-icon-btn ${speaking ? 'selected' : ''}`} title={speaking ? 'Mute spoken answers' : 'Enable spoken answers'} onClick={() => { setSpeaking(!speaking); if (speaking) window.speechSynthesis?.cancel(); }} aria-label="Toggle spoken answers">{speaking ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button></div>
-            <div className="chat-context"><span className="context-pulse"/><span>{health.camera_configured ? `Context: ${camName}` : 'No camera context yet'}</span><span className="context-separator">/</span><span>Frame-based analysis</span></div>
+          <section className="panel chat-panel"><div className="panel-header chat-heading"><div className="assistant-heading"><div className="assistant-avatar"><ScanEye size={20}/><span/></div><div><div className="panel-title">Talk to your camera</div><div className="panel-subtitle">Ask naturally. Get a visual answer.</div></div></div><button className={`small-icon-btn ${wakeEnabled ? 'selected' : ''}`} title={wakeEnabled ? 'Turn off Hey James listening' : 'Enable Hey James wake word'} onClick={startWakeWord} aria-label="Toggle Hey James wake word"><Mic size={17}/></button><button className={`small-icon-btn ${speaking ? 'selected' : ''}`} title={speaking ? 'Mute spoken answers' : 'Enable spoken answers'} onClick={() => { setSpeaking(!speaking); if (speaking) window.speechSynthesis?.cancel(); }} aria-label="Toggle spoken answers">{speaking ? <Volume2 size={17}/> : <VolumeX size={17}/>}</button></div>
+            <div className="chat-context"><span className="context-pulse"/><span>{wakeStatus}</span><span className="context-separator">/</span><span>{health.camera_configured ? `Context: ${camName}` : 'No camera context yet'}</span><span className="context-separator">/</span><span>Frame-based analysis</span></div>
             <div className="messages">
               <div className="date-divider"><span/> SESSION STARTED <span/></div>
               {messages.map((m, i) => <div key={i} className={`message-row ${m.role}`}><div className={`message-avatar ${m.role}`}>{m.role === 'assistant' ? <ScanEye size={16}/> : m.role === 'user' ? 'YOU' : <CircleHelp size={15}/>}</div><div className="message-main"><div className="message-meta"><strong>{m.role === 'assistant' ? 'NEXUS' : m.role === 'user' ? 'YOU' : 'NOTICE'}</strong><time>{time(m.time)}</time></div><div className="bubble">{m.text}</div>{m.source && <div className="answer-source"><Check size={12}/> {m.source}</div>}</div></div>)}
