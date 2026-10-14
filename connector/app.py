@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import os
 import threading
-from typing import Optional
 from urllib.parse import urlparse
 
 import cv2
@@ -13,12 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 APP_NAME = "NEXUS Vision Local Connector"
-SETTINGS_PATH = os.environ.get("NEXUS_SETTINGS_PATH", "camera-settings.json")
-OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_VISION_MODEL", "qwen3-vl:4b")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
+GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b").strip()
 
-app = FastAPI(title=APP_NAME, version="0.1.0")
-# Development convenience only. Restrict this to your UI origin before production.
+app = FastAPI(title=APP_NAME, version="0.2.0")
+# Local-development origins only. Tighten these before any deployment.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -49,7 +48,7 @@ def _validate_rtsp(url: str) -> None:
 
 
 def _capture_snapshot(url: str) -> bytes:
-    # Credentials stay server-side. OpenCV/FFmpeg RTSP support must be available in this build.
+    # Credentials remain in the local connector. OpenCV needs FFmpeg/RTSP support.
     cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
     try:
         if not cap.isOpened():
@@ -70,24 +69,32 @@ def _capture_snapshot(url: str) -> bytes:
         cap.release()
 
 
+def _groq_headers() -> dict[str, str]:
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=503, detail="Groq API key is not configured. Add GROQ_API_KEY to connector/.env and restart the connector.")
+    return {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+
+
 @app.get("/api/health")
 def health():
-    ollama_ok = False
-    try:
-        response = requests.get(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=2)
-        ollama_ok = response.ok
-    except requests.RequestException:
-        pass
     with _lock:
         configured = bool(_camera.get("configured"))
         name = _camera.get("name", "CP Plus camera")
-    return {"ok": True, "service": APP_NAME, "camera_configured": configured, "camera_name": name if configured else None, "ollama_available": ollama_ok, "model": OLLAMA_MODEL}
+    return {
+        "ok": True,
+        "service": APP_NAME,
+        "camera_configured": configured,
+        "camera_name": name if configured else None,
+        "groq_configured": bool(GROQ_API_KEY),
+        "provider": "Groq API",
+        "model": GROQ_VISION_MODEL,
+    }
 
 
 @app.post("/api/camera")
 def configure_camera(data: CameraInput):
     _validate_rtsp(data.rtsp_url)
-    # Store credentials only in local process memory. Do not log or return the URL.
+    # Keep camera credentials only in local process memory; never return or log the URL.
     with _lock:
         _camera.update({"name": data.name.strip(), "rtsp_url": data.rtsp_url, "configured": True})
     return {"ok": True, "name": data.name.strip(), "message": "Camera URL stored in local connector memory. Use Test Camera to verify it."}
@@ -125,41 +132,67 @@ def ask_camera(data: AskInput):
         configured = _camera["configured"]
     if not configured or not url:
         raise HTTPException(status_code=409, detail="Add and test a camera before asking questions.")
-    try:
-        snapshot = _capture_snapshot(url)
-    except HTTPException:
-        raise
-    image_b64 = base64.b64encode(snapshot).decode("ascii")
+
+    headers = _groq_headers()
+    snapshot = _capture_snapshot(url)
+    image_data_url = "data:image/jpeg;base64," + base64.b64encode(snapshot).decode("ascii")
     prompt = (
-        "You are NEXUS Vision, a careful CCTV scene assistant. Answer only from the supplied current camera image. "
-        "Be clear about uncertainty, do not identify a person's identity, and do not invent details or events outside this frame. "
-        "If the question asks what happened over time, explain that one snapshot cannot establish history. "
+        "You are NEXUS Vision, a careful CCTV scene assistant. Answer the user's question using only the supplied current camera frame. "
+        "Be clear about uncertainty. Do not identify a person's identity, infer sensitive personal traits, or invent details or events outside this frame. "
+        "If asked about history or what happened over time, explain that a single snapshot cannot establish it. "
+        "Describe observable facts plainly and distinguish guesses from what is clearly visible. "
         f"Camera name: {name}. User question: {data.question}"
     )
+    payload = {
+        "model": GROQ_VISION_MODEL,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": image_data_url}},
+                ],
+            }
+        ],
+        "temperature": 0.2,
+        "max_tokens": 700,
+        "stream": False,
+    }
     try:
         response = requests.post(
-            f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
-            json={"model": OLLAMA_MODEL, "stream": False, "messages": [{"role": "user", "content": prompt, "images": [image_b64]}]},
-            timeout=120,
+            f"{GROQ_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=90,
         )
-        if response.status_code == 404:
-            raise HTTPException(status_code=503, detail=f"Ollama model '{OLLAMA_MODEL}' is not available. Install it with: ollama pull {OLLAMA_MODEL}")
+        if response.status_code == 401:
+            raise HTTPException(status_code=503, detail="Groq rejected the API key. Check GROQ_API_KEY in connector/.env.")
+        if response.status_code == 429:
+            raise HTTPException(status_code=429, detail="Groq rate limit or usage quota reached. Wait and try again, or check your Groq Console limits.")
+        if response.status_code in (400, 404):
+            raise HTTPException(status_code=502, detail=f"Groq rejected model/request. Verify GROQ_VISION_MODEL ('{GROQ_VISION_MODEL}') is currently available for vision in your Groq account.")
         response.raise_for_status()
-        payload = response.json()
-        answer = (payload.get("message") or {}).get("content", "").strip()
+        payload_out = response.json()
+        choices = payload_out.get("choices") or []
+        answer = ((choices[0].get("message") or {}).get("content") or "").strip() if choices else ""
         if not answer:
-            raise HTTPException(status_code=502, detail="The local model returned an empty answer.")
-        return {"answer": answer, "camera": name, "source": "local-vision-model", "snapshot_mime_type": "image/jpeg"}
+            raise HTTPException(status_code=502, detail="Groq returned an empty answer.")
+        return {
+            "answer": answer,
+            "camera": name,
+            "source": "Groq vision API",
+            "model": GROQ_VISION_MODEL,
+            "snapshot_mime_type": "image/jpeg",
+        }
     except HTTPException:
         raise
-    except requests.ConnectionError:
-        raise HTTPException(status_code=503, detail="Cannot reach Ollama. Start Ollama and install the configured vision model.")
     except requests.Timeout:
-        raise HTTPException(status_code=504, detail="Local vision model took too long. Try a smaller model or a smaller snapshot.")
+        raise HTTPException(status_code=504, detail="Groq took too long to respond. Try again with a simpler question.")
     except requests.RequestException as exc:
-        raise HTTPException(status_code=502, detail=f"Local AI request failed: {type(exc).__name__}")
+        # Do not include request URLs, headers, or secrets in client-facing errors.
+        raise HTTPException(status_code=502, detail=f"Could not reach Groq API ({type(exc).__name__}). Check your internet connection and Groq service status.")
 
 
 @app.get("/")
 def root():
-    return {"name": APP_NAME, "docs": "/docs", "health": "/api/health"}
+    return {"name": APP_NAME, "docs": "/docs", "health": "/api/health", "provider": "Groq API"}
