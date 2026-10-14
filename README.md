@@ -1,4 +1,4 @@
-# NEXUS Vision — Groq-powered CCTV Talk Assistant
+# NEXUS Vision — Universal Wi-Fi Camera Assistant
 
 A local-first CCTV viewer and conversational vision assistant. The local connector captures a frame from a compatible camera, then sends that snapshot and your question to Groq's vision API. The browser never receives your RTSP URL or Groq API key.
 
@@ -7,7 +7,7 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - Ask natural-language questions about the current camera frame.
 - Read visible signs/text, describe scenes, and ask about visible objects.
 - Use browser speech input and spoken responses where supported.
-- Connect a compatible CP Plus IP camera/NVR using RTSP.
+- Connect compatible Wi-Fi/IP cameras and recorders through local RTSP/RTSPS, regardless of brand.
 - Keep camera credentials and the Groq API key in the local connector, not in frontend JavaScript.
 
 ## Important privacy and compatibility notes
@@ -15,7 +15,7 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - **This uses Groq's cloud API, not a local AI model.** A camera snapshot is sent to Groq whenever you ask a question. Do not use it with cameras or locations whose footage you are not authorized to share.
 - Groq usage limits, model availability, and any free tier can change. Check your Groq Console before relying on it for continuous use.
 - The default vision model is `qwen/qwen3.6-27b`; verify the model is currently available to your Groq account. Change `GROQ_VISION_MODEL` in `connector/.env` if needed.
-- CP Plus models and firmware differ. This works only if your camera/NVR exposes a compatible RTSP stream. Some setups may need RTSP/ONVIF enabled in the device configuration.
+- CP Plus models and firmware differ. The current snapshot connector requires a compatible RTSP/RTSPS stream. Universal camera support is protocol-based, not a guarantee that every app-only Wi-Fi camera exposes a local stream. ONVIF discovery and vendor-specific integrations are separate additions.
 - Most browsers cannot play RTSP directly. MediaMTX can bridge compatible streams to WebRTC/HLS for a continuous browser live view. The current dashboard captures snapshots through the connector for AI questions.
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
 - Keep the connector on a trusted local network. Do not expose its ports or camera streams publicly without authentication, HTTPS, and a security review.
@@ -60,7 +60,7 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 
 If PowerShell blocks activation, use `.venv\Scripts\python.exe -m pip install -r requirements.txt` and `.venv\Scripts\python.exe -m uvicorn app:app --host 127.0.0.1 --port 8765` instead.
 
-## CP Plus camera setup
+## Universal Wi-Fi camera setup
 
 1. Find the exact model number from the camera label, NVR menu, or CP Plus app/device information.
 2. Ensure the camera/NVR and computer are on the same network.
