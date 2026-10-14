@@ -1,0 +1,9 @@
+# Optional browser-streaming bridge example.
+# Replace the source with your camera's actual RTSP URL and protect this config.
+# Never commit credentials to a public repository.
+# Consult https://mediamtx.org/docs for version-specific configuration.
+
+# Minimal path example (confirm syntax against your MediaMTX version):
+paths:
+  cpplus:
+    source: rtsp://CAMERA_USER:CAMERA_PASSWORD@CAMERA_IP:554/REPLACE_WITH_MODEL_SPECIFIC_PATH
