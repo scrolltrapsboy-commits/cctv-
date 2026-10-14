@@ -20,9 +20,9 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
 - Keep the connector on a trusted local network. Do not expose its ports or camera streams publicly without authentication, HTTPS, and a security review.
 
-## Deploy everything in one Render Web Service
+## Deploy everything in one Render Web Service (cloud-only UI/API)
 
-You do **not** need a separate Static Site. Deploy the React website and FastAPI API together as one Render **Web Service**.
+Deploy the React website and FastAPI API together as one Render **Web Service**.
 
 - Root Directory: leave blank (repository root)
 - Build Command: `npm install --prefix web && npm run build --prefix web && pip install -r connector/requirements.txt`
@@ -32,19 +32,13 @@ Set these environment variables in that same Render service:
 
 - `GROQ_API_KEY` = your secret Groq key
 - `GROQ_BASE_URL` = `https://api.groq.com/openai/v1`
-- `GROQ_VISION_MODEL` = `qwen/qwen3.8-27b`
+- `GROQ_VISION_MODEL` = a vision model currently available to your Groq account
 
-The backend serves the built website from `web/dist`. The public Render site is the UI host; after the user clicks **Add camera**, the browser calls the local connector at `http://127.0.0.1:8765` for camera RTSP and snapshot requests. Chrome/Edge may ask permission for loopback/local-network access; allow it. Render cannot directly reach a private home-LAN address such as `192.168.31.26`. The service root `/` opens the website, while `/api/health` and `/docs` remain API endpoints. After merging and redeploying, keep the local connector running on the Windows PC connected to the camera Wi-Fi.
+The production website calls the API on the same Render origin; it does not call localhost or require a local connector. The `/` route serves the built website and `/api/health` reports API configuration.
 
-**Camera network boundary:** a Render service cannot ordinarily reach a camera available only on private home Wi-Fi. Do not expose RTSP ports or camera credentials to the public internet. Camera access needs a compatible reachable stream or a secure local connector/private tunnel. Wake-word support uses browser speech recognition and needs the website tab open; this deployment does not by itself add continuous event detection or camera-speaker output.
+**Important camera-network limitation:** Render cannot directly reach a private home-LAN IP such as `192.168.31.26`. VLC working on your laptop proves the stream works on your LAN, not from Render. In cloud-only mode, the RTSP stream must be reachable from Render through a secure, authenticated relay or VPN gateway. Do not expose RTSP or camera credentials directly to the public internet. If the camera only exposes a private LAN stream and cannot publish to a supported cloud service, live camera analysis cannot work from Render alone without some network bridge.
 
-### Hey James voice activation
-
-The dashboard has an opt-in browser wake listener for “Hey James” and “Hi James”. In supported Chrome/Edge browsers, open the website, allow microphone permission, and click the microphone/wake button. Say “Hey James, what colour is my shirt?” or say “Hey James” and then ask. Keep the website tab open and active. Browser speech recognition is not guaranteed to run always-on in the background; browser and operating-system support vary. Responses play through the browser, not automatically through the camera speaker.
-
-### Camera network boundary
-
-A Render server cannot ordinarily reach a camera available only on private home Wi-Fi. Do not expose RTSP ports or camera credentials to the public internet. For home use, the connector must run on a trusted computer on the same LAN or use a properly authenticated private tunnel. The current connector analyzes one snapshot per question; continuous event monitoring and camera-speaker output require further implementation and device-specific testing.
+The browser's “Hey James” listener uses browser speech recognition while the page is open; responses play through the browser, not the camera speaker. This deployment does not provide continuous background listening or camera-speaker output.
 
 ## Architecture
 
