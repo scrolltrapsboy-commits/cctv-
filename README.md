@@ -20,16 +20,23 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
 - Keep the connector on a trusted local network. Do not expose its ports or camera streams publicly without authentication, HTTPS, and a security review.
 
-## Deploy the website and API on Render
+## Deploy everything in one Render Web Service
 
-The backend root URL returns JSON intentionally; it is an API health response, not the website. Deploy a separate Render Static Site from this repository:
+You do **not** need a separate Static Site. Deploy the React website and FastAPI API together as one Render **Web Service**.
 
-- Root Directory: `web`
-- Build Command: `npm install && npm run build`
-- Publish Directory: `dist`
-- Static-site environment variable: `VITE_API_BASE_URL=https://YOUR-BACKEND.onrender.com` (replace with your actual backend URL)
+- Root Directory: leave blank (repository root)
+- Build Command: `npm install --prefix web && npm run build --prefix web && pip install -r connector/requirements.txt`
+- Start Command: `uvicorn connector.app:app --host 0.0.0.0 --port $PORT`
 
-On the backend Web Service, set `FRONTEND_ORIGINS` to the exact static-site origin, such as `https://your-site.onrender.com`, then redeploy the backend. Keep `GROQ_API_KEY` only on the backend.
+Set these environment variables in that same Render service:
+
+- `GROQ_API_KEY` = your secret Groq key
+- `GROQ_BASE_URL` = `https://api.groq.com/openai/v1`
+- `GROQ_VISION_MODEL` = `qwen/qwen3.6-27b`
+
+The backend serves the built website from `web/dist`; in production the website automatically calls the same Render origin for API requests. The service root `/` opens the website, while `/api/health` and `/docs` remain API endpoints. After changing settings, redeploy the service from the latest `main` branch.
+
+**Camera network boundary:** a Render service cannot ordinarily reach a camera available only on private home Wi-Fi. Do not expose RTSP ports or camera credentials to the public internet. Camera access needs a compatible reachable stream or a secure local connector/private tunnel. Wake-word support uses browser speech recognition and needs the website tab open; this deployment does not by itself add continuous event detection or camera-speaker output.
 
 ### Hey James voice activation
 
