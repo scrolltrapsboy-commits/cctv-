@@ -7,7 +7,7 @@ const API = 'http://127.0.0.1:8765';
 
 function App() {
   const [health, setHealth] = useState({ ok: false, camera_configured: false, groq_configured: false, provider: 'Groq API', model: 'qwen/qwen3.6-27b' });
-  const [camName, setCamName] = useState('CP Plus camera');
+  const [camName, setCamName] = useState('My Wi-Fi camera');
   const [rtsp, setRtsp] = useState('');
   const [showUrl, setShowUrl] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
@@ -28,7 +28,7 @@ function App() {
       const r = await fetch(`${API}/api/health`, { signal: AbortSignal.timeout(2500) });
       if (!r.ok) throw new Error('Connector unavailable');
       const data = await r.json(); setHealth(data);
-      if (data.camera_configured) setCamName(data.camera_name || 'CP Plus camera');
+      if (data.camera_configured) setCamName(data.camera_name || 'My Wi-Fi camera');
       setCameraStatus(data.camera_configured ? 'Configured' : 'Not connected');
     } catch { setHealth(h => ({ ...h, ok: false })); }
   }
@@ -47,7 +47,7 @@ function App() {
     e?.preventDefault(); if (!rtsp.trim()) return notify('Enter your camera RTSP URL first.');
     setBusy(true);
     try {
-      const r = await fetch(`${API}/api/camera`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: camName.trim() || 'CP Plus camera', rtsp_url: rtsp.trim() }) });
+      const r = await fetch(`${API}/api/camera`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: camName.trim() || 'My Wi-Fi camera', rtsp_url: rtsp.trim() }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Unable to save camera');
       const test = await fetch(`${API}/api/camera/snapshot`, { signal: AbortSignal.timeout(15000) }); const frame = await test.json();
       if (!test.ok) throw new Error(frame.detail || 'Camera stream test failed');
@@ -108,13 +108,13 @@ function App() {
           <div className="metric"><span className="metric-icon green"><ShieldCheck size={17}/></span><div><small>DATA ROUTING</small><strong>Connector protected</strong><em>Groq vision API · usage limits apply</em></div></div>
         </div>
         <div className="dashboard-grid">
-          <section className="panel camera-panel"><div className="panel-header"><div><div className="panel-title"><span className="live-symbol"/> LIVE CAMERA</div><div className="panel-subtitle">{health.camera_configured ? camName : 'Connect your CP Plus device'}</div></div><button className="small-icon-btn" title="Camera settings" onClick={() => setShowSetup(true)}><Settings2 size={17}/></button></div>
+          <section className="panel camera-panel"><div className="panel-header"><div><div className="panel-title"><span className="live-symbol"/> LIVE CAMERA</div><div className="panel-subtitle">{health.camera_configured ? camName : 'Connect your Wi-Fi camera'}</div></div><button className="small-icon-btn" title="Camera settings" onClick={() => setShowSetup(true)}><Settings2 size={17}/></button></div>
             <div className={`camera-viewport ${snapshot ? 'has-image' : ''}`}>
-              {snapshot ? <img className="snapshot" src={snapshot} alt="Latest camera snapshot"/> : <div className="camera-placeholder"><div className="radar"><div className="radar-ring ring-a"/><div className="radar-ring ring-b"/><div className="radar-cross"/><div className="radar-center"><ScanEye size={31}/></div></div><strong>Your view starts here</strong><p>Connect a compatible IP camera to capture a live snapshot.</p><button className="primary-btn" onClick={() => setShowSetup(true)}><Wifi size={16}/> Connect a camera</button></div>}
+              {snapshot ? <img className="snapshot" src={snapshot} alt="Latest camera snapshot"/> : <div className="camera-placeholder"><div className="radar"><div className="radar-ring ring-a"/><div className="radar-ring ring-b"/><div className="radar-cross"/><div className="radar-center"><ScanEye size={31}/></div></div><strong>Your view starts here</strong><p>Connect a compatible network camera to capture a live snapshot.</p><button className="primary-btn" onClick={() => setShowSetup(true)}><Wifi size={16}/> Connect a camera</button></div>}
               <div className="viewport-overlay"><span className="record-label"><i/> {snapshot ? 'SNAPSHOT' : 'STANDBY'}</span><span className="viewport-time">{new Date().toLocaleTimeString()}</span></div>
               <div className="viewport-coordinates">NEXUS VISION <span>•</span> LOCAL FEED</div>
             </div>
-            <div className="camera-footer"><div className="camera-connection"><span className={`status-led ${health.camera_configured ? 'on' : ''}`}/><div><strong>{cameraStatus}</strong><small>{health.camera_configured ? 'RTSP source configured' : 'Awaiting camera configuration'}</small></div></div><div className="camera-actions"><button className="round-action" title="Refresh snapshot" onClick={takeSnapshot}><Activity size={16}/></button><button className="round-action" title="Disconnect camera" onClick={disconnect}><X size={16}/></button></div></div>
+            <div className="camera-footer"><div className="camera-connection"><span className={`status-led ${health.camera_configured ? 'on' : ''}`}/><div><strong>{cameraStatus}</strong><small>{health.camera_configured ? 'RTSP stream configured' : 'Awaiting camera configuration'}</small></div></div><div className="camera-actions"><button className="round-action" title="Refresh snapshot" onClick={takeSnapshot}><Activity size={16}/></button><button className="round-action" title="Disconnect camera" onClick={disconnect}><X size={16}/></button></div></div>
             <div className="camera-hint"><ShieldCheck size={15}/><span>For privacy, your stream is accessed by the local connector. The dashboard shows snapshots on demand. Asking a question sends the current snapshot to Groq for analysis.</span></div>
           </section>
 
@@ -135,9 +135,9 @@ function App() {
       </div>
     </main>
 
-    {showSetup && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setShowSetup(false); }}><div className="setup-modal"><div className="modal-heading"><div><div className="eyebrow"><Settings2 size={13}/> CONNECTION SETUP</div><h2>Add a camera</h2><p>Connect a compatible CP Plus IP camera or NVR on your local network.</p></div><button className="icon-btn" onClick={() => setShowSetup(false)}><X size={19}/></button></div>
+    {showSetup && <div className="modal-backdrop" onMouseDown={e => { if (e.target === e.currentTarget) setShowSetup(false); }}><div className="setup-modal"><div className="modal-heading"><div><div className="eyebrow"><Settings2 size={13}/> CONNECTION SETUP</div><h2>Add a camera</h2><p>Connect a compatible network camera or recorder. NEXUS is designed for different brands, but each device must expose a supported local stream.</p></div><button className="icon-btn" onClick={() => setShowSetup(false)}><X size={19}/></button></div>
       <div className="connector-warning"><ShieldCheck size={18}/><div><strong>Credentials stay in the local connector</strong><p>The RTSP URL is sent to localhost only and is kept in memory until you disconnect or restart the connector. Never use this form on a public computer.</p></div></div>
-      <form className="setup-form" onSubmit={connectCamera}><label>CAMERA NAME<input value={camName} onChange={e => setCamName(e.target.value)} placeholder="e.g. Front gate" maxLength={80}/></label><label>RTSP STREAM URL<div className="password-field"><input type={showUrl ? 'text' : 'password'} value={rtsp} onChange={e => setRtsp(e.target.value)} placeholder="rtsp://user:password@camera-ip:554/..." autoComplete="off" required/><button type="button" onClick={() => setShowUrl(!showUrl)}>{showUrl ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></label><div className="hint-box"><CircleHelp size={15}/><p>CP Plus stream paths vary by model, NVR, and channel. Find the correct RTSP URL in your device manual/configuration, and test it in VLC first. Do not assume a generic path will work.</p></div><div className="modal-actions"><button type="button" className="secondary-btn" onClick={() => setShowSetup(false)}>Cancel</button><button type="submit" className="primary-btn" disabled={busy || !health.ok}>{busy ? <><span className="button-spinner"/> Testing…</> : <><Wifi size={16}/> Save & test stream</>}</button></div>{!health.ok && <div className="inline-error">Local connector isn't reachable. Start it using the setup instructions in README.md.</div>}</form></div></div>}
+      <form className="setup-form" onSubmit={connectCamera}><label>CAMERA NAME<input value={camName} onChange={e => setCamName(e.target.value)} placeholder="e.g. Front gate / CP-E35A" maxLength={80}/></label><label>LOCAL CAMERA STREAM URL (RTSP)<div className="password-field"><input type={showUrl ? 'text' : 'password'} value={rtsp} onChange={e => setRtsp(e.target.value)} placeholder="rtsp://user:password@camera-ip:554/..." autoComplete="off" required/><button type="button" onClick={() => setShowUrl(!showUrl)}>{showUrl ? <EyeOff size={17}/> : <Eye size={17}/>}</button></div></label><div className="hint-box"><CircleHelp size={15}/><p>Universal compatibility note: the camera must expose RTSP/RTSPS on your local network. Stream paths and credentials vary by brand and firmware. Test the URL in VLC first. If the CP-E35A only works through its phone app and exposes no RTSP/ONVIF/local stream, this connection method will not work until a supported integration is found.</p></div><div className="modal-actions"><button type="button" className="secondary-btn" onClick={() => setShowSetup(false)}>Cancel</button><button type="submit" className="primary-btn" disabled={busy || !health.ok}>{busy ? <><span className="button-spinner"/> Testing…</> : <><Wifi size={16}/> Save & test stream</>}</button></div>{!health.ok && <div className="inline-error">Local connector isn't reachable. Start it using the setup instructions in README.md.</div>}</form></div></div>}
     {toast && <div className="toast"><Activity size={15}/>{toast}</div>}
   </div>;
 }
