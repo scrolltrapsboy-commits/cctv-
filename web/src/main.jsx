@@ -57,7 +57,19 @@ function App() {
     try {
       const r = await fetch(`${API}/api/camera`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: camName.trim() || 'CP Plus camera', rtsp_url: rtsp.trim() }) });
       const d = await r.json(); if (!r.ok) throw new Error(d.detail || 'Unable to save camera');
-      const test = await fetch(`${API}/api/camera/snapshot`, { signal: AbortSignal.timeout(15000) }); const frame = await test.json();
+      const test = await fetch(`${API}/api/camera/snapshot`, { signal: AbortSignal.timeout(15000) });
+      const frame = await test.json();
+      if (!test.ok && test.status === 422 && /Render cannot connect directly to a private camera IP/i.test(frame.detail || '')) {
+        // Save the supplied URL successfully, but never claim the camera is live
+        // when Render cannot route to the private LAN address.
+        setCameraStatus('Saved · awaiting cloud access');
+        setShowSetup(false);
+        setRtsp('');
+        setHealth(h => ({ ...h, camera_configured: true, camera_name: camName }));
+        notify('Camera URL saved. Live analysis will work when a secure cloud route to the camera is available.');
+        setMessages(m => [...m, { role: 'assistant', text: 'I saved your camera settings. The stream is on a private home-network address, so Render cannot receive video from it yet. I can answer general questions now; camera-specific answers need a secure cloud connection to the stream.', time: new Date() }]);
+        return;
+      }
       if (!test.ok) throw new Error(frame.detail || 'Camera stream test failed');
       setSnapshot(`data:image/jpeg;base64,${frame.image_base64}`); setCameraStatus('Live snapshot received'); setShowSetup(false); setRtsp(''); setHealth(h => ({ ...h, camera_configured: true, camera_name: camName }));
       notify('Camera connected. Snapshot received successfully.');
