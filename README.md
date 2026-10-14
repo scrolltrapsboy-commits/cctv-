@@ -20,6 +20,25 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
 - Keep the connector on a trusted local network. Do not expose its ports or camera streams publicly without authentication, HTTPS, and a security review.
 
+## Deploy the website and API on Render
+
+The backend root URL returns JSON intentionally; it is an API health response, not the website. Deploy a separate Render Static Site from this repository:
+
+- Root Directory: `web`
+- Build Command: `npm install && npm run build`
+- Publish Directory: `dist`
+- Static-site environment variable: `VITE_API_BASE_URL=https://YOUR-BACKEND.onrender.com` (replace with your actual backend URL)
+
+On the backend Web Service, set `FRONTEND_ORIGINS` to the exact static-site origin, such as `https://your-site.onrender.com`, then redeploy the backend. Keep `GROQ_API_KEY` only on the backend.
+
+### Hey James voice activation
+
+The dashboard has an opt-in browser wake listener for “Hey James” and “Hi James”. In supported Chrome/Edge browsers, open the website, allow microphone permission, and click the microphone/wake button. Say “Hey James, what colour is my shirt?” or say “Hey James” and then ask. Keep the website tab open and active. Browser speech recognition is not guaranteed to run always-on in the background; browser and operating-system support vary. Responses play through the browser, not automatically through the camera speaker.
+
+### Camera network boundary
+
+A Render server cannot ordinarily reach a camera available only on private home Wi-Fi. Do not expose RTSP ports or camera credentials to the public internet. For home use, the connector must run on a trusted computer on the same LAN or use a properly authenticated private tunnel. The current connector analyzes one snapshot per question; continuous event monitoring and camera-speaker output require further implementation and device-specific testing.
+
 ## Architecture
 
 - `web/` — React/Vite dashboard, chat, voice controls, camera setup.
