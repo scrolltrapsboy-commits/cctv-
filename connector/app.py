@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 import threading
+from pathlib import Path
 from urllib.parse import urlparse
 
 import cv2
@@ -10,6 +11,8 @@ import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -197,6 +200,34 @@ def ask_camera(data: AskInput):
         raise HTTPException(status_code=502, detail=f"Could not reach Groq API ({type(exc).__name__}). Check your internet connection and Groq service status.")
 
 
-@app.get("/")
+# Serve the built React website from the same Render Web Service.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+WEB_DIST = PROJECT_ROOT / "web" / "dist"
+WEB_ASSETS = WEB_DIST / "assets"
+if WEB_ASSETS.is_dir():
+    app.mount("/assets", StaticFiles(directory=str(WEB_ASSETS)), name="web-assets")
+
+
+@app.get("/", include_in_schema=False)
 def root():
-    return {"name": APP_NAME, "docs": "/docs", "health": "/api/health", "provider": "Groq API"}
+    index_file = WEB_DIST / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+    return {
+        "name": APP_NAME,
+        "message": "Website build not found. Run the Render build command to build web/dist.",
+        "docs": "/docs",
+        "health": "/api/health",
+        "provider": "Groq API",
+    }
+
+
+@app.get("/{frontend_path:path}", include_in_schema=False)
+def frontend_routes(frontend_path: str):
+    candidate = (WEB_DIST / frontend_path).resolve()
+    if WEB_DIST.resolve() in candidate.parents and candidate.is_file():
+        return FileResponse(candidate)
+    index_file = WEB_DIST / "index.html"
+    if index_file.is_file() and not frontend_path.startswith(("api/", "docs", "openapi.json")):
+        return FileResponse(index_file)
+    raise HTTPException(status_code=404, detail="Not found")
