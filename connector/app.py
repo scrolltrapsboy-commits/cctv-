@@ -181,36 +181,31 @@ def camera_snapshot():
     return {"mime_type": "image/jpeg", "image_base64": base64.b64encode(jpg).decode("ascii")}
 
 
-@app.post("/api/ask")
-def ask_camera(data: AskInput):
-    with _lock:
-        url = _camera["rtsp_url"]
-        name = _camera["name"]
-        configured = _camera["configured"]
-    if not configured or not url:
-        raise HTTPException(status_code=409, detail="Add and test a camera before asking questions.")
-
+def _ask_groq(question: str, image_data_url: str | None = None, camera_name: str | None = None) -> dict:
     headers = _groq_headers()
-    snapshot = _capture_snapshot(url)
-    image_data_url = "data:image/jpeg;base64," + base64.b64encode(snapshot).decode("ascii")
-    prompt = (
-        "You are NEXUS Vision, a careful CCTV scene assistant. Answer the user's question using only the supplied current camera frame. "
-        "Be clear about uncertainty. Do not identify a person's identity, infer sensitive personal traits, or invent details or events outside this frame. "
-        "If asked about history or what happened over time, explain that a single snapshot cannot establish it. "
-        "Describe observable facts plainly and distinguish guesses from what is clearly visible. "
-        f"Camera name: {name}. User question: {data.question}"
-    )
+    if image_data_url:
+        prompt = (
+            "You are NEXUS Vision, a careful CCTV scene assistant. Answer the user's question using only the supplied current camera frame. "
+            "Be clear about uncertainty. Do not identify a person's identity, infer sensitive personal traits, or invent details or events outside this frame. "
+            "If asked about history or what happened over time, explain that a single snapshot cannot establish it. "
+            "Describe observable facts plainly and distinguish guesses from what is clearly visible. "
+            f"Camera name: {camera_name or 'Camera'}. User question: {question}"
+        )
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": image_data_url}},
+        ]
+    else:
+        prompt = (
+            "You are James, a helpful voice assistant. Answer the user's general question clearly and naturally. "
+            "Do not claim to have checked live weather, news, or other real-time information unless it is included in the prompt. "
+            "Do not pretend to see the camera when no camera image is supplied. If the user asks what the camera sees, explain that the camera stream is not currently available to the cloud service. "
+            f"User question: {question}"
+        )
+        content = prompt
     payload = {
         "model": GROQ_VISION_MODEL,
-        "messages": [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_data_url}},
-                ],
-            }
-        ],
+        "messages": [{"role": "user", "content": content}],
         "temperature": 0.2,
         "max_completion_tokens": 900,
         "stream": False,
@@ -223,11 +218,11 @@ def ask_camera(data: AskInput):
             timeout=90,
         )
         if response.status_code == 401:
-            raise HTTPException(status_code=503, detail="Groq rejected the API key. Check GROQ_API_KEY in connector/.env.")
+            raise HTTPException(status_code=503, detail="Groq rejected the API key. Check GROQ_API_KEY in your Render environment variables.")
         if response.status_code == 429:
-            raise HTTPException(status_code=429, detail="Groq rate limit or usage quota reached. Wait and try again, or check your Groq Console limits.")
+            raise HTTPException(status_code=429, detail="Groq rate limit or usage quota reached. Check your Groq Console limits.")
         if response.status_code in (400, 404):
-            raise HTTPException(status_code=502, detail=f"Groq rejected the model/request (HTTP {response.status_code}). Current model: {GROQ_VISION_MODEL}. Groq response: {response.text[:700]}. Check model ID and account access in Groq Console.")
+            raise HTTPException(status_code=502, detail=f"Groq rejected the model/request (HTTP {response.status_code}). Current model: {GROQ_VISION_MODEL}. Check that this model is enabled for your Groq account.")
         response.raise_for_status()
         payload_out = response.json()
         choices = payload_out.get("choices") or []
@@ -236,18 +231,48 @@ def ask_camera(data: AskInput):
             raise HTTPException(status_code=502, detail="Groq returned an empty answer.")
         return {
             "answer": answer,
-            "camera": name,
-            "source": "Groq vision API",
+            "camera": camera_name,
+            "source": "Groq vision API" if image_data_url else "Groq assistant",
             "model": GROQ_VISION_MODEL,
-            "snapshot_mime_type": "image/jpeg",
+            "snapshot_mime_type": "image/jpeg" if image_data_url else None,
+            "camera_used": bool(image_data_url),
         }
     except HTTPException:
         raise
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="Groq took too long to respond. Try again with a simpler question.")
     except requests.RequestException as exc:
-        # Do not include request URLs, headers, or secrets in client-facing errors.
-        raise HTTPException(status_code=502, detail=f"Could not reach Groq API ({type(exc).__name__}). Check your internet connection and Groq service status.")
+        raise HTTPException(status_code=502, detail=f"Could not reach Groq API ({type(exc).__name__}). Check the Render service and Groq status.")
+
+
+@app.post("/api/ask")
+def ask_camera(data: AskInput):
+    with _lock:
+        url = _camera["rtsp_url"]
+        name = _camera["name"]
+        configured = _camera["configured"]
+
+    # Questions about the camera must use a real frame. General questions can
+    # still be answered by the cloud assistant without pretending to see video.
+    question_lower = data.question.lower()
+    camera_terms = (
+        "camera", "this image", "this frame", "what do you see", "what is visible",
+        "who is visible", "person wearing", "dress", "shirt", "colour", "color",
+        "how many people", "in the video", "in the picture", "on screen", "at the gate",
+    )
+    asks_about_camera = any(term in question_lower for term in camera_terms)
+    if configured and url and asks_about_camera:
+        snapshot = _capture_snapshot(url)
+        image_data_url = "data:image/jpeg;base64," + base64.b64encode(snapshot).decode("ascii")
+        return _ask_groq(data.question, image_data_url, name)
+
+    if not configured and asks_about_camera:
+        raise HTTPException(
+            status_code=409,
+            detail="I can answer general questions, but I can't see your camera yet. The camera's live stream must be securely reachable from Render before I can describe its view.",
+        )
+
+    return _ask_groq(data.question)
 
 
 # Serve the built React website from the same Render Web Service.
