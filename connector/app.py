@@ -14,16 +14,17 @@ from pydantic import BaseModel, Field
 
 load_dotenv()
 
-APP_NAME = "NEXUS Vision Local Connector"
+APP_NAME = "NEXUS Vision Camera Assistant"
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
 GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b").strip()
 
 app = FastAPI(title=APP_NAME, version="0.2.0")
-# Local-development origins only. Tighten these before any deployment.
+# Explicit frontend origins: comma-separated HTTPS website URLs in FRONTEND_ORIGINS, plus local Vite development.
+FRONTEND_ORIGINS = [origin.strip().rstrip("/") for origin in os.environ.get("FRONTEND_ORIGINS", "").split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=list(dict.fromkeys(["http://localhost:5173", "http://127.0.0.1:5173", *FRONTEND_ORIGINS])),
     allow_credentials=False,
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type"],

@@ -20,6 +20,20 @@ A local-first CCTV viewer and conversational vision assistant. The local connect
 - One snapshot can answer questions about what is visible now; it cannot reliably establish events over time without recording and temporal analysis.
 - Keep the connector on a trusted local network. Do not expose its ports or camera streams publicly without authentication, HTTPS, and a security review.
 
+## Deploy the actual website on Render
+
+The JSON page at the service root is only the API health response; it is not the web dashboard. Create a **separate Render Static Site** for the website:
+
+- Repository: this repository
+- Root Directory: `web`
+- Build Command: `npm install && npm run build`
+- Publish Directory: `dist`
+- Environment variable: `VITE_API_BASE_URL=https://YOUR-BACKEND-SERVICE.onrender.com` (replace with your actual backend URL)
+
+Then add the exact deployed static-site URL to the backend's `FRONTEND_ORIGINS` environment variable, comma-separated if you have more than one origin. Redeploy both services after changing environment variables.
+
+**Camera connectivity limitation:** a backend hosted on Render cannot normally reach a camera that exists only on your private home Wi-Fi. Do not port-forward the camera or expose its RTSP URL publicly. For the real home-camera use case, run the connector on a trusted computer on the same LAN as the camera, and securely connect the hosted website to that connector (for example via a properly authenticated private tunnel). The frontend setting above only makes the website call the backend; it does not create camera network access.
+
 ## Architecture
 
 - `web/` — React/Vite dashboard, chat, voice controls, camera setup.
