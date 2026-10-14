@@ -22,9 +22,11 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "").strip()
 GROQ_BASE_URL = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
 GROQ_VISION_MODEL = os.environ.get("GROQ_VISION_MODEL", "qwen/qwen3.6-27b").strip()
 
-app = FastAPI(title=APP_NAME, version="0.2.0")
+app = FastAPI(title=APP_NAME, version="0.2.1")
 # Set FRONTEND_ORIGINS to comma-separated deployed website origins in Render.
+DEFAULT_FRONTEND_ORIGINS = ["https://cctv-l0ca.onrender.com"]
 FRONTEND_ORIGINS = [origin.strip().rstrip("/") for origin in os.environ.get("FRONTEND_ORIGINS", "").split(",") if origin.strip()]
+FRONTEND_ORIGINS = list(dict.fromkeys([*DEFAULT_FRONTEND_ORIGINS, *FRONTEND_ORIGINS]))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=list(dict.fromkeys(["http://localhost:5173", "http://127.0.0.1:5173", *FRONTEND_ORIGINS])),
@@ -55,14 +57,35 @@ def _validate_rtsp(url: str) -> None:
 
 
 def _capture_snapshot(url: str) -> bytes:
-    # Credentials remain in the local connector. OpenCV needs FFmpeg/RTSP support.
-    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+    """Capture one RTSP frame with bounded open/read waits.
+
+    Run this connector on a computer that can route to the camera (normally
+    the same home LAN). Explicit FFmpeg timeouts prevent indefinite blocking.
+    """
+    previous_options = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;7000000"
+    cap = None
     try:
+        params = []
+        if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+            params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 7000])
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, 7000])
+        try:
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, params) if params else cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        except (TypeError, cv2.error):
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         if not cap.isOpened():
-            raise HTTPException(status_code=502, detail="Could not open camera stream. Check RTSP URL, credentials, network, and camera stream settings.")
+            raise HTTPException(
+                status_code=504,
+                detail="Camera stream timed out while opening. Run this connector on a computer connected to the camera's Wi-Fi, then verify the current camera IP, RTSP port, credentials, and exact ONVIF stream URI.",
+            )
         ok, frame = cap.read()
         if not ok or frame is None:
-            raise HTTPException(status_code=502, detail="Stream opened but no frame was received. Check channel/path and camera availability.")
+            raise HTTPException(
+                status_code=504,
+                detail="RTSP connected but no video frame arrived within 7 seconds. Verify the exact stream URI in ONVIF Device Manager and try the camera's lower-resolution H.264 profile.",
+            )
         height, width = frame.shape[:2]
         max_width = 1280
         if width > max_width:
@@ -72,8 +95,15 @@ def _capture_snapshot(url: str) -> bytes:
         if not ok:
             raise HTTPException(status_code=500, detail="Could not encode the camera snapshot.")
         return encoded.tobytes()
+    except cv2.error as exc:
+        raise HTTPException(status_code=502, detail="OpenCV could not decode this RTSP stream. Try an H.264 profile or check the camera stream URI.") from exc
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
+        if previous_options is None:
+            os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+        else:
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = previous_options
 
 
 def _groq_headers() -> dict[str, str]:
