@@ -57,14 +57,35 @@ def _validate_rtsp(url: str) -> None:
 
 
 def _capture_snapshot(url: str) -> bytes:
-    # Credentials remain in the local connector. OpenCV needs FFmpeg/RTSP support.
-    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+    """Capture one RTSP frame with bounded open/read waits.
+
+    Run this connector on a computer that can route to the camera (normally
+    the same home LAN). Explicit FFmpeg timeouts prevent indefinite blocking.
+    """
+    previous_options = os.environ.get("OPENCV_FFMPEG_CAPTURE_OPTIONS")
+    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;7000000"
+    cap = None
     try:
+        params = []
+        if hasattr(cv2, "CAP_PROP_OPEN_TIMEOUT_MSEC"):
+            params.extend([cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 7000])
+        if hasattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC"):
+            params.extend([cv2.CAP_PROP_READ_TIMEOUT_MSEC, 7000])
+        try:
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, params) if params else cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+        except (TypeError, cv2.error):
+            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
         if not cap.isOpened():
-            raise HTTPException(status_code=502, detail="Could not open camera stream. Check RTSP URL, credentials, network, and camera stream settings.")
+            raise HTTPException(
+                status_code=504,
+                detail="Camera stream timed out while opening. Run this connector on a computer connected to the camera's Wi-Fi, then verify the current camera IP, RTSP port, credentials, and exact ONVIF stream URI.",
+            )
         ok, frame = cap.read()
         if not ok or frame is None:
-            raise HTTPException(status_code=502, detail="Stream opened but no frame was received. Check channel/path and camera availability.")
+            raise HTTPException(
+                status_code=504,
+                detail="RTSP connected but no video frame arrived within 7 seconds. Verify the exact stream URI in ONVIF Device Manager and try the camera's lower-resolution H.264 profile.",
+            )
         height, width = frame.shape[:2]
         max_width = 1280
         if width > max_width:
@@ -74,8 +95,15 @@ def _capture_snapshot(url: str) -> bytes:
         if not ok:
             raise HTTPException(status_code=500, detail="Could not encode the camera snapshot.")
         return encoded.tobytes()
+    except cv2.error as exc:
+        raise HTTPException(status_code=502, detail="OpenCV could not decode this RTSP stream. Try an H.264 profile or check the camera stream URI.") from exc
     finally:
-        cap.release()
+        if cap is not None:
+            cap.release()
+        if previous_options is None:
+            os.environ.pop("OPENCV_FFMPEG_CAPTURE_OPTIONS", None)
+        else:
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = previous_options
 
 
 def _groq_headers() -> dict[str, str]:
