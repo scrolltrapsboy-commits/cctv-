@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { Activity, AudioLines, Camera, Check, ChevronDown, CircleHelp, Eye, EyeOff, Gauge, Menu, MessageSquare, Mic, MicOff, Monitor, Plus, Radio, ScanEye, Send, Settings2, ShieldCheck, Sparkles, Volume2, VolumeX, Wifi, X, Zap } from 'lucide-react';
 import './styles.css';
 
-const API = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8765').replace(/\/$/, '');
+const API = (import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? 'http://127.0.0.1:8765' : window.location.origin)).replace(/\/$/, '');
 
 function App() {
   const [health, setHealth] = useState({ ok: false, camera_configured: false, groq_configured: false, provider: 'Groq API', model: 'qwen/qwen3.6-27b' });
